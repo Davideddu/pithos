@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ### BEGIN LICENSE
 # Copyright (C) 2010 Kevin Mehall <km@kevinmehall.net>
@@ -25,6 +25,8 @@ except ImportError:
     from setuptools import setup, find_packages
 
 import os
+import sys
+from pithos.pithosconfig import VERSION
 
 # Utility function to read the README file.
 # Used for the long_description.  It's nice, because now 1) we have a top level
@@ -34,9 +36,19 @@ def read(fname):
     with open(os.path.join(os.path.dirname(__file__), fname)) as f:
         return f.read()
 
+if sys.platform != 'win32':
+    data_files = [
+        ('/usr/share/icons/hicolor/scalable/apps', ['data/icons/hicolor/pithos.svg']),
+        ('/usr/share/icons/ubuntu-mono-dark/apps/16', ['data/icons/ubuntu-mono-dark/pithos-tray-icon.svg']),
+        ('/usr/share/icons/ubuntu-mono-light/apps/16', ['data/icons/ubuntu-mono-light/pithos-tray-icon.svg']),
+        ('/usr/share/applications', ['data/pithos.desktop'])
+    ]
+else:
+    data_files = []
+
 setup(
     name='pithos',
-    version='0.3',
+    version=VERSION,
     ext_modules=[],
     license='GPL-3',
     author='Kevin Mehall',
@@ -49,15 +61,10 @@ setup(
         'Intended Audience :: End Users/Desktop',
         'Topic :: Media',
         'License :: OSI Approved :: GPL License',
-        'Programming Language :: Python'
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3'
     ],
-    data_files=[
-        ('/usr/share/icons/hicolor/scalable/apps', [
-             'data/icons/scalable/apps/pithos-mono.svg',
-             'data/icons/scalable/apps/pithos.svg'
-         ]),
-        ('/usr/share/applications', ['data/pithos.desktop'])
-    ],
+    data_files=data_files,
     package_data={
         'pithos': [
             'data/ui/*.ui',

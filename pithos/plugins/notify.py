@@ -15,17 +15,35 @@
 ### END LICENSE
 
 import logging
-from cgi import escape
+import html
 from pithos.plugin import PithosPlugin
 from pithos.pithosconfig import get_data_file
-from gi.repository import (GLib, Gtk, Notify)
+from gi.repository import (GLib, Gtk)
 
 class NotifyPlugin(PithosPlugin):
     preference = 'notify'
 
+    has_notify = False
     supports_actions = False
-    
+
     def on_prepare(self):
+        try:
+            from gi.repository import Notify
+            self.has_notify = True
+        except ImportError:
+            logging.warning ("libnotify not found.")
+            return
+
+        # Work-around Ubuntu's incompatible workaround for Gnome's API breaking mistake.
+        # https://bugzilla.gnome.org/show_bug.cgi?id=702390
+        old_add_action = Notify.Notification.add_action
+        def new_add_action(*args):
+            try:
+                old_add_action(*args)
+            except TypeError:
+                old_add_action(*(args + (None,)))
+        Notify.Notification.add_action = new_add_action
+
         Notify.init('Pithos')
         self.notification = Notify.Notification()
         self.notification.set_category('x-gnome.music')
@@ -44,8 +62,9 @@ class NotifyPlugin(PithosPlugin):
         #    self.notification.set_hint('resident', GLib.Variant.new_boolean(True))
 
     def on_enable(self):
-        self.song_callback_handle = self.window.connect("song-changed", self.song_changed)
-        self.state_changed_handle = self.window.connect("user-changed-play-state", self.playstate_changed)
+        if self.has_notify:
+            self.song_callback_handle = self.window.connect("song-changed", self.song_changed)
+            self.state_changed_handle = self.window.connect("user-changed-play-state", self.playstate_changed)
 
     def set_actions(self, playing=True):
         self.notification.clear_actions()
@@ -60,13 +79,13 @@ class NotifyPlugin(PithosPlugin):
 
         if playing:
             self.notification.add_action(pause_action, 'Pause',
-                                         self.notification_playpause_cb, None, None)
+                                         self.notification_playpause_cb, None)
         else:
             self.notification.add_action(play_action, 'Play',
-                                         self.notification_playpause_cb, None, None)
+                                         self.notification_playpause_cb, None)
 
         self.notification.add_action(skip_action, 'Skip',
-                                     self.notification_skip_cb, None, None)
+                                     self.notification_skip_cb, None)
 
     def set_notification(self, song, playing=True):
         if self.supports_actions:
@@ -76,8 +95,8 @@ class NotifyPlugin(PithosPlugin):
             self.notification.set_image_from_pixbuf(song.art_pixbuf)
         else:
             self.notification.set_hint('image-data', None)
-        
-        msg = escape('by {} from {}'.format(song.artist, song.album))
+
+        msg = html.escape('by {} from {}'.format(song.artist, song.album))
         self.notification.update(song.title, msg, 'audio-x-generic')
         self.notification.show()
 
@@ -86,15 +105,16 @@ class NotifyPlugin(PithosPlugin):
 
     def notification_skip_cb(self, notification, action, data, ignore=None):
         self.window.next_song()
-        
+
     def song_changed(self, window,  song):
         if not self.window.is_active():
             GLib.idle_add(self.set_notification, window.current_song)
-            
+
     def playstate_changed(self, window, state):
         if not self.window.is_active():
             GLib.idle_add(self.set_notification, window.current_song, state)
-        
+
     def on_disable(self):
-        self.window.disconnect(self.song_callback_handle)
-        self.window.disconnect(self.state_changed_handle)
+        if self.has_notify:
+            self.window.disconnect(self.song_callback_handle)
+            self.window.disconnect(self.state_changed_handle)

@@ -16,11 +16,11 @@
 
 import sys
 import os
+import html
 from gi.repository import Gtk
 from gi.repository import GObject
-import cgi
 
-from .pithosconfig import getdatapath
+from .pithosconfig import get_ui_file
 
 class SearchDialog(Gtk.Dialog):
     __gtype_name__ = "SearchDialog"
@@ -82,9 +82,9 @@ class SearchDialog(Gtk.Dialog):
             self.model.clear()
             for i in results:
                 if i.resultType is 'song':
-                    mk = "<b>%s</b> by %s"%(cgi.escape(i.title), cgi.escape(i.artist))
+                    mk = "<b>%s</b> by %s"%(html.escape(i.title), html.escape(i.artist))
                 elif i.resultType is 'artist':
-                    mk = "<b>%s</b> (artist)"%(cgi.escape(i.name))
+                    mk = "<b>%s</b> (artist)"%(html.escape(i.name))
                 self.model.append((i, mk))
             self.treeview.show()
             self.searchbtn.set_sensitive(True)
@@ -110,13 +110,8 @@ def NewSearchDialog(worker_run):
     
     """
 
-    #look for the ui file that describes the ui
-    ui_filename = os.path.join(getdatapath(), 'ui', 'SearchDialog.ui')
-    if not os.path.exists(ui_filename):
-        ui_filename = None
-
     builder = Gtk.Builder()
-    builder.add_from_file(ui_filename)    
+    builder.add_from_file(get_ui_file('search'))    
     dialog = builder.get_object("search_dialog")
     dialog.finish_initializing(builder, worker_run)
     return dialog
