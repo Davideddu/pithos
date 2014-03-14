@@ -75,7 +75,7 @@ setup(
     },
     install_requires=[
         'pylast',
-        'mutagen'
+        'mutagenx'
     ],
     packages=find_packages(),
     include_package_data=True,

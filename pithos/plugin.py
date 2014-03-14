@@ -65,7 +65,7 @@ def load_plugin(name, window):
         module = getattr(module.plugins, name)
         
     except ImportError as e:
-        return ErrorPlugin(name, e.message)
+        return ErrorPlugin(name, e)
         
     # find the class object for the actual plugin
     for key, item in module.__dict__.items():
@@ -86,12 +86,14 @@ def load_plugins(window):
     
     for name in discovered_plugins:
         if not name in plugins:
+            #print(name, window)
             plugin = plugins[name] = load_plugin(name, window)
         else:
             plugin = plugins[name]
 
         if plugin.preference and prefs.get(plugin.preference, False):
             plugin.enable()
+            print("Enabled?")
         else:
             plugin.disable()
         

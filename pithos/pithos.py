@@ -1027,10 +1027,10 @@ def NewPithosWindow(app, options):
     """
 
     builder = Gtk.Builder()
-    builder.add_from_file(ui_filename)
-    toolbar = builder.get_object("toolbar")
-    toolbar.get_style_context().add_class("primary-toolbar")
-    #builder.add_from_file(get_ui_file('main'))
+    #builder.add_from_file(ui_filename)
+    #toolbar = builder.get_object("toolbar")
+    #toolbar.get_style_context().add_class("primary-toolbar")
+    builder.add_from_file(get_ui_file('main'))
     window = builder.get_object("pithos_window")
     window.set_application(app)
     window.finish_initializing(builder, options)
