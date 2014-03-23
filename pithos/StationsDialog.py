@@ -18,9 +18,9 @@ import sys
 import os
 from gi.repository import Gtk
 import logging
-import webbrowser
 
-from .pithosconfig import getdatapath
+from .pithosconfig import get_ui_file
+from .util import open_browser
 from . import SearchDialog
 
 class StationsDialog(Gtk.Dialog):
@@ -57,7 +57,7 @@ class StationsDialog(Gtk.Dialog):
         self.modelfilter = self.model.filter_new()
         self.modelfilter.set_visible_func(lambda m, i, d: m.get_value(i, 0) and not  m.get_value(i, 0).isQuickMix)
 
-        self.modelsortable = Gtk.TreeModelSort(self.modelfilter)
+        self.modelsortable = Gtk.TreeModelSort.sort_new_with_model(self.modelfilter)
         """
         @todo Leaving it as sorting by date added by default. 
         Probably should make a radio select in the window or an option in program options for user preference
@@ -128,7 +128,7 @@ class StationsDialog(Gtk.Dialog):
         self.hide()
         
     def on_menuitem_info(self, widget):
-        webbrowser.open(self.selected_station().info_url)
+        open_browser(self.selected_station().info_url)
         
     def on_menuitem_rename(self, widget):
         sel = self.treeview.get_selection().get_selected()
@@ -202,13 +202,8 @@ def NewStationsDialog(pithos):
     
     """
 
-    #look for the ui file that describes the ui
-    ui_filename = os.path.join(getdatapath(), 'ui', 'StationsDialog.ui')
-    if not os.path.exists(ui_filename):
-        ui_filename = None
-
     builder = Gtk.Builder()
-    builder.add_from_file(ui_filename)    
+    builder.add_from_file(get_ui_file('stations'))    
     dialog = builder.get_object("stations_dialog")
     dialog.finish_initializing(builder, pithos)
     return dialog

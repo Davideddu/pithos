@@ -14,11 +14,10 @@
 #with this program.  If not, see <http://www.gnu.org/licenses/>.
 ### END LICENSE
 
-import sys
-import os
-from gi.repository import Gtk
+from gi.repository import Gtk, GdkPixbuf
 
-from .pithosconfig import getdatapath
+from .pithosconfig import get_ui_file, get_media_file
+from .util import open_browser
 
 class AboutPithosDialog(Gtk.AboutDialog):
     __gtype_name__ = "AboutPithosDialog"
@@ -45,7 +44,13 @@ class AboutPithosDialog(Gtk.AboutDialog):
         self.builder = builder
         self.builder.connect_signals(self)
 
+        self.set_logo(GdkPixbuf.Pixbuf.new_from_file_at_scale(get_media_file('icon'), -1, 96, True))
+
         #code for other initialization actions should be added here
+
+    def activate_link_cb(self, wid, uri):
+        open_browser(uri)
+        return True
 
 def NewAboutPithosDialog():
     """NewAboutPithosDialog - returns a fully instantiated
@@ -54,13 +59,8 @@ def NewAboutPithosDialog():
     
     """
 
-    #look for the ui file that describes the ui
-    ui_filename = os.path.join(getdatapath(), 'ui', 'AboutPithosDialog.ui')
-    if not os.path.exists(ui_filename):
-        ui_filename = None
-
     builder = Gtk.Builder()
-    builder.add_from_file(ui_filename)    
+    builder.add_from_file(get_ui_file('about'))    
     dialog = builder.get_object("about_pithos_dialog")
     dialog.finish_initializing(builder)
     return dialog

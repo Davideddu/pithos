@@ -363,7 +363,7 @@ else:
                 self.player.add_playlist(playlist)
 
             if UNITY_QUICKLIST:
-                print "building"
+                print("building")
                 self.build_quicklist()
                 self.station_changed(self.window.current_station)
             

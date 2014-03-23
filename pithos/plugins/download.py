@@ -21,7 +21,7 @@ import logging
 from pithos.plugin import PithosPlugin
 from pithos.pithosconfig import get_data_file
 from gi.repository import GLib, Gtk
-from mutagen import mp4
+from mutagenx import mp4
 
 class DownloadPlugin(PithosPlugin):
     preference = 'download'

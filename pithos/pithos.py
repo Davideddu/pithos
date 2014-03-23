@@ -25,14 +25,16 @@ import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GObject, Gtk, Gdk, Pango, GdkPixbuf, Gio, GLib, Notify
 import contextlib
-import cgi
+import html
 import math
 import webbrowser
-import urllib, urllib2
-from mutagen import mp4
+#import urllib, urllib2
+#from mutagenx import mp4
+import urllib.request, urllib.error, urllib.parse
 import json
-from dbus.mainloop.glib import DBusGMainLoop
-DBusGMainLoop(set_as_default=True)
+if sys.platform != 'win32':
+    from dbus.mainloop.glib import DBusGMainLoop
+    DBusGMainLoop(set_as_default=True)
 
 # Check if we are working in the source tree or from the installed
 # package and mangle the python path accordingly
@@ -47,12 +49,16 @@ else:
 sys.path.insert(0, os.path.dirname(fullPath))
 
 from . import AboutPithosDialog, PreferencesPithosDialog, StationsDialog
-from .util import *
-from .pithosconfig import getdatapath, VERSION
+from .util import parse_proxy, open_browser
+from .pithosconfig import get_ui_file, get_media_file, VERSION
 from .gobject_worker import GObjectWorker
 from .plugin import load_plugins
-from .dbus_service import PithosDBusProxy
-from .mpris import PithosMprisService, UNITY
+if sys.platform != 'win32':
+    from .dbus_service import PithosDBusProxy
+    from .mpris import PithosMprisService
+else:
+    from .dbus_service import PithosDBusProxy
+    from .mpris import PithosMprisService, UNITY
 from .pandora import *
 from .pandora.data import *
 
@@ -62,15 +68,6 @@ try:
     pacparser_imported = True
 except ImportError:
     logging.warning("Disabled proxy auto-config support because python-pacparser module was not found.")
-
-def openBrowser(url):
-    logging.info("Opening URL {}".format(url))
-    webbrowser.open(url)
-    if isinstance(webbrowser.get(), webbrowser.BackgroundBrowser):
-        try:
-            os.wait() # workaround for http://bugs.python.org/issue5993
-        except:
-            pass
 
 def buttonMenu(button, menu):
     def cb(button):
@@ -90,7 +87,7 @@ class CellRendererAlbumArt(Gtk.CellRenderer):
         GObject.GObject.__init__(self)
         self.icon = None
         self.pixbuf = None
-        self.rate_bg = GdkPixbuf.Pixbuf.new_from_file(os.path.join(getdatapath(), 'media', 'rate_bg.png'))
+        self.rate_bg = GdkPixbuf.Pixbuf.new_from_file(get_media_file('rate'))
 
     __gproperties__ = {
         'icon': (str, 'icon', 'icon', '', GObject.PARAM_READWRITE),
@@ -121,12 +118,17 @@ class CellRendererAlbumArt(Gtk.CellRenderer):
             ctx.paint()
 
 def get_album_art(url, *extra):
-    l = GdkPixbuf.PixbufLoader()
-    l.set_size(ALBUM_ART_SIZE, ALBUM_ART_SIZE)
-    with contextlib.closing(urllib2.urlopen(url)) as f:
-        l.write(f.read())
-    l.close()
-    return (l.get_pixbuf(),) + extra
+    try:
+        with urllib.request.urlopen(url) as f:
+            image = f.read()
+    except urllib.error.HTTPError:
+        logging.warn('Invalid image url received')
+        return (None,) + extra
+
+    with contextlib.closing(GdkPixbuf.PixbufLoader()) as loader:
+        loader.set_size(ALBUM_ART_SIZE, ALBUM_ART_SIZE)
+        loader.write(image)
+        return (loader.get_pixbuf(),) + extra
 
 
 class PithosWindow(Gtk.ApplicationWindow):
@@ -179,8 +181,9 @@ class PithosWindow(Gtk.ApplicationWindow):
         self.plugins = {}
         load_plugins(self)
 
-        self.dbus_service = PithosDBusProxy(self)
-        self.mpris = PithosMprisService(self)
+        if sys.platform != 'win32':
+            self.dbus_service = PithosDBusProxy(self)
+            self.mpris = PithosMprisService(self)
 
         if not self.preferences['username']:
             self.show_preferences(is_startup=True)
@@ -229,7 +232,7 @@ class PithosWindow(Gtk.ApplicationWindow):
         self.worker = GObjectWorker()
         self.art_worker = GObjectWorker()
 
-        aa = GdkPixbuf.Pixbuf.new_from_file(os.path.join(getdatapath(), 'media', 'album_default.png'))
+        aa = GdkPixbuf.Pixbuf.new_from_file(get_media_file('album'))
 
         self.default_album_art = aa.scale_simple(ALBUM_ART_SIZE, ALBUM_ART_SIZE, GdkPixbuf.InterpType.BILINEAR)
 
@@ -329,7 +332,7 @@ class PithosWindow(Gtk.ApplicationWindow):
         if self.preferences['proxy']:
             return self.preferences['proxy']
 
-        system_proxies = urllib.getproxies()
+        system_proxies = urllib.request.getproxies()
         if 'http' in system_proxies:
             return system_proxies['http']
 
@@ -346,29 +349,26 @@ class PithosWindow(Gtk.ApplicationWindow):
         handlers = []
         global_proxy = self.preferences['proxy']
         if global_proxy:
-            handlers.append(urllib2.ProxyHandler({'http': global_proxy, 'https': global_proxy}))
-        global_opener = urllib2.build_opener(*handlers)
-        urllib2.install_opener(global_opener)
+            handlers.append(urllib.request.ProxyHandler({'http': global_proxy, 'https': global_proxy}))
+        global_opener = urllib.request.build_opener(*handlers)
+        urllib.request.install_opener(global_opener)
 
         control_opener = global_opener
         control_proxy = self.preferences['control_proxy']
         control_proxy_pac = self.preferences['control_proxy_pac']
 
         if control_proxy:
-            control_opener = urllib2.build_opener(urllib2.ProxyHandler({'http': control_proxy, 'https': control_proxy}))
+            control_opener = urllib.request.build_opener(urllib.request.ProxyHandler({'http': control_proxy, 'https': control_proxy}))
 
         elif control_proxy_pac and pacparser_imported:
             pacparser.init()
-            pacparser.parse_pac_string(urllib2.urlopen(control_proxy_pac).read())
+            pacparser.parse_pac_string(urllib.request.urlopen(control_proxy_pac).read())
             proxies = pacparser.find_proxy("http://pandora.com", "pandora.com").split(";")
             for proxy in proxies:
                 match = re.search("PROXY (.*)", proxy)
                 if match:
                     control_proxy = match.group(1)
                     break
-
-            if control_proxy:
-                control_opener = urllib2.build_opener(urllib2.ProxyHandler({'http': control_proxy, 'https': control_proxy}))
 
         self.worker_run('set_url_opener', (control_opener,))
 
@@ -459,7 +459,8 @@ class PithosWindow(Gtk.ApplicationWindow):
             return self.next_song()
 
         logging.info("Starting song: index = %i"%(song_index))
-        self.buffer_percent = 100
+        self.buffer_percent = 0
+        self.song_started = False
         self.player.set_property("uri", self.current_song.audioUrl)
         self.play()
         self.playcount += 1
@@ -475,10 +476,10 @@ class PithosWindow(Gtk.ApplicationWindow):
     def prev_song(self, *ignore):
         i = self.current_song_index
         if time.time() - self.current_song.start_time < 3 and i > 0:
-            print True
+            print(True)
             self.start_song(i - 1)
         else:
-            print False
+            print(False)
             self.start_song(i)
 
     def next_song(self, *ignore):
@@ -487,13 +488,14 @@ class PithosWindow(Gtk.ApplicationWindow):
 
     def user_play(self, *ignore):
         self.play()
+        self.song_started = True
         self.emit('user-changed-play-state', True)
 
     def play(self):
         if not self.playing:
             self.playing = True
-            self.player.set_state(Gst.State.PLAYING)
-            GLib.timeout_add_seconds(1, self.update_song_row)
+        self.player.set_state(Gst.State.PLAYING)
+        GLib.timeout_add_seconds(1, self.update_song_row)
         self.playpause_button.set_stock_id(Gtk.STOCK_MEDIA_PAUSE)
         self.update_song_row()
         self.emit('play-state-changed', True)
@@ -514,16 +516,20 @@ class PithosWindow(Gtk.ApplicationWindow):
         if prev and prev.start_time:
             prev.finished = True
             dur_stat, dur = self.player.query_duration(self.time_format)
-            prev.duration = dur/1000000000 if dur_stat else None
+            prev.duration = dur//1000000000 if dur_stat else None
             pos_stat, pos = self.player.query_position(self.time_format)
-            prev.position = pos/1000000000 if pos_stat else None
+            prev.position = pos//1000000000 if pos_stat else None
             self.emit("song-ended", prev)
 
         self.playing = False
         self.player.set_state(Gst.State.NULL)
         self.emit('play-state-changed', False)
 
+    def user_playpause(self, *ignore):
+        self.playpause_notify()
+        
     def playpause(self, *ignore):
+        logging.info("playpause")
         if self.playing:
             self.pause()
         else:
@@ -610,7 +616,7 @@ class PithosWindow(Gtk.ApplicationWindow):
         dialog = self.builder.get_object("api_update_dialog")
         response = dialog.run()
         if response:
-            openBrowser("http://pithos.github.io/itbroke?utm_source=pithos&utm_medium=app&utm_campaign=%s"%VERSION)
+            open_browser("http://pithos.github.io/itbroke?utm_source=pithos&utm_medium=app&utm_campaign=%s"%VERSION)
         self.quit()
 
     def station_index(self, station):
@@ -699,13 +705,23 @@ class PithosWindow(Gtk.ApplicationWindow):
         tag_info.foreach(tag_handler, None)
 
     def on_gst_buffering(self, bus, message):
+        # per GST documentation:
+        # Note that applications should keep/set the pipeline in the PAUSED state when a BUFFERING
+        # message is received with a buffer percent value < 100 and set the pipeline back to PLAYING
+        # state when a BUFFERING message with a value of 100 percent is received.
+        
+        # 100% doesn't mean the entire song is downloaded, but it does mean that it's safe to play.
+        # trying to play before 100% will cause stuttering.
         percent = message.parse_buffering()
         self.buffer_percent = percent
-        #if percent < 100:
-            #self.player.set_state(Gst.State.PAUSED)
-        #elif self.playing:
-            #self.player.set_state(Gst.State.PLAYING)
+        if percent < 100:
+            self.player.set_state(Gst.State.PAUSED)
+        else:
+            if self.playing:
+                self.play()
+                self.song_started = True
         self.update_song_row()
+        logging.debug("Buffering (%i%%)"%self.buffer_percent)
 
     def set_volume_cb(self, volume):
         # Convert to the cubic scale that the volume slider uses
@@ -730,13 +746,15 @@ class PithosWindow(Gtk.ApplicationWindow):
             soup.proxy_pw = password
 
     def song_text(self, song):
-        title = cgi.escape(song.title)
-        artist = cgi.escape(song.artist)
-        album = cgi.escape(song.album)
+        title = html.escape(song.title)
+        artist = html.escape(song.artist)
+        album = html.escape(song.album)
         msg = []
         if song is self.current_song:
             dur_stat, dur_int = self.player.query_duration(self.time_format)
             pos_stat, pos_int = self.player.query_position(self.time_format)
+            if not self.song_started:
+                pos_int = 0
             if not song.bitrate is None:
                 msg.append("%0dkbit/s" % (song.bitrate / 1000))
             if dur_stat and pos_stat:
@@ -795,11 +813,11 @@ class PithosWindow(Gtk.ApplicationWindow):
             self.station_changed(self.stations_model[index][0])
 
     def format_time(self, time_int):
-        time_int = time_int / 1000000000
+        time_int = time_int // 1000000000
         s = time_int % 60
-        time_int /= 60
+        time_int //= 60
         m = time_int % 60
-        time_int /= 60
+        time_int //= 60
         h = time_int
 
         if h:
@@ -867,7 +885,7 @@ class PithosWindow(Gtk.ApplicationWindow):
 
     def on_menuitem_info(self, widget):
         song = self.selected_song()
-        openBrowser(song.songDetailURL)
+        open_browser(song.songDetailURL)
 
     def on_menuitem_bookmark_song(self, widget):
         self.bookmark_song(self.selected_song())
@@ -920,7 +938,7 @@ class PithosWindow(Gtk.ApplicationWindow):
         self.set_player_volume(value)
 
     def station_properties(self, *ignore):
-        openBrowser(self.current_station.info_url)
+        open_browser(self.current_station.info_url)
 
     def show_about(self):
         """about - display the about box for pithos """
@@ -1008,15 +1026,11 @@ def NewPithosWindow(app, options):
     creating a PithosWindow directly.
     """
 
-    #look for the ui file that describes the ui
-    ui_filename = os.path.join(getdatapath(), 'ui', 'PithosWindow.ui')
-    if not os.path.exists(ui_filename):
-        ui_filename = None
-
     builder = Gtk.Builder()
-    builder.add_from_file(ui_filename)
-    toolbar = builder.get_object("toolbar")
-    toolbar.get_style_context().add_class("primary-toolbar")
+    #builder.add_from_file(ui_filename)
+    #toolbar = builder.get_object("toolbar")
+    #toolbar.get_style_context().add_class("primary-toolbar")
+    builder.add_from_file(get_ui_file('main'))
     window = builder.get_object("pithos_window")
     window.set_application(app)
     window.finish_initializing(builder, options)
@@ -1034,9 +1048,8 @@ class PithosApplication(Gtk.Application):
         Gtk.Application.do_startup(self)
 
         # Setup appmenu
-        ui_filename = os.path.join(getdatapath(), 'ui', 'app_menu.ui')
         builder = Gtk.Builder()
-        builder.add_from_file(ui_filename)
+        builder.add_from_file(get_ui_file('menu'))
         menu = builder.get_object("app-menu")
         self.set_app_menu(menu)
 
